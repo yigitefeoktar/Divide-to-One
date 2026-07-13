@@ -1,0 +1,8 @@
+{
+  "name": "Divide to One",
+  "description": "A satisfying puzzle game where you divide numbers to reach 1 in the minimum number of operations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
