@@ -62,11 +62,11 @@ export const playWrongMove = () => {
     osc.connect(gain);
     gain.connect(ctx.destination);
     
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(150, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.15);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(300, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(150, ctx.currentTime + 0.15);
     
-    const maxGain = 0.08 * volumeState; // Sawtooth can be a bit louder naturally, scale down slightly
+    const maxGain = 0.1 * volumeState;
     gain.gain.setValueAtTime(0, ctx.currentTime);
     gain.gain.linearRampToValueAtTime(maxGain, ctx.currentTime + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.15);
@@ -93,7 +93,7 @@ export const playWinLevel = () => {
       osc.type = 'sine';
       osc.frequency.value = freq;
       
-      const maxGain = 0.08 * volumeState;
+      const maxGain = 0.1 * volumeState;
       const startTime = ctx.currentTime + delay;
       gain.gain.setValueAtTime(0, startTime);
       gain.gain.linearRampToValueAtTime(maxGain, startTime + duration * 0.1);
@@ -152,7 +152,7 @@ export const playClick = () => {
     osc.frequency.setValueAtTime(600, ctx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.05);
     
-    const maxGain = 0.08 * volumeState;
+    const maxGain = 0.1 * volumeState;
     gain.gain.setValueAtTime(0, ctx.currentTime);
     gain.gain.linearRampToValueAtTime(maxGain, ctx.currentTime + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.05);

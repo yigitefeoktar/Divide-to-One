@@ -274,7 +274,7 @@ export default function App() {
   const [level, setLevel] = useState(1);
   const [current, setCurrent] = useState(0);
   const [minMoves, setMinMoves] = useState(0);
-  const [maxMoves, setMaxMoves] = useState(0);
+  const [maxMistakes, setMaxMistakes] = useState(0);
   const [moves, setMoves] = useState(0);
   const [mistakes, setMistakes] = useState(0);
   
@@ -358,7 +358,7 @@ export default function App() {
     
     setCurrent(newTarget);
     setMinMoves(newMinMoves);
-    setMaxMoves(newMinMoves + allowedMistakes);
+    setMaxMistakes(allowedMistakes);
     setMoves(0);
     setMistakes(0);
     setFailedDivisors([]);
@@ -530,8 +530,7 @@ export default function App() {
         }, 300);
       } else {
         const required = getMinimumMoves(next);
-        const movesRemaining = maxMoves - newMoves;
-        if (required === -1 || required > movesRemaining) {
+        if (required === -1) {
           triggerLoss('impossible');
         }
       }
@@ -540,15 +539,13 @@ export default function App() {
       triggerVibrate([30, 40, 30]);
       setShakeKey(k => k + 1);
       
-      const maxMistakes = maxMoves - minMoves;
       const totalMistakes = mistakes + 1;
       
-      if (totalMistakes > maxMistakes || newMoves >= maxMoves) {
+      if (totalMistakes > maxMistakes) {
         triggerLoss('mistakes');
       } else {
         const required = getMinimumMoves(current);
-        const movesRemaining = maxMoves - newMoves;
-        if (required === -1 || required > movesRemaining) {
+        if (required === -1) {
           triggerLoss('impossible');
         } else {
           playWrongMove();
@@ -763,7 +760,6 @@ export default function App() {
                   </>
                 )}
                 {(() => {
-                  const maxMistakes = maxMoves - minMoves;
                   const mistakesLeft = maxMistakes - mistakes;
                   const hasMistakes = mistakesLeft > 0;
                   const currentMinMoves = getMinimumMoves(current);
@@ -823,13 +819,13 @@ export default function App() {
               <div className="flex flex-col items-center w-full max-w-sm mt-auto bg-red-950/40 p-6 rounded-[2rem] border border-red-900/50 backdrop-blur-md relative z-10">
                 <div className="flex items-center justify-center gap-2 mb-2">
                   <h4 className="text-red-400 font-bold uppercase tracking-wider text-sm">
-                    {lossReason === 'mistakes' ? 'Out of Mistakes' : 'Out of Divisions'}
+                    {lossReason === 'mistakes' ? 'Out of Mistakes' : 'Impossible State'}
                   </h4>
                 </div>
                 <p className="text-red-200/80 text-sm mb-6 text-center">
                   {lossReason === 'mistakes' 
                     ? "You've used all your allowed mistakes."
-                    : `You reached the limit of ${maxMoves} divisions.`}
+                    : "There are no valid divisions left to reach 1."}
                 </p>
                 
                 <motion.button
