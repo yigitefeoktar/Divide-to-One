@@ -1,38 +1,29 @@
-export function getMinimumMoves(target: number): number {
-  if (target === 1) return 0;
-  
-  const queue: { value: number; moves: number }[] = [{ value: target, moves: 0 }];
-  const visited = new Set<number>([target]);
-  
-  while (queue.length > 0) {
-    const { value, moves } = queue.shift()!;
-    
-    for (let i = 9; i >= 2; i--) {
-      if (value % i === 0) {
-        const nextValue = value / i;
-        if (nextValue === 1) {
-          return moves + 1;
-        }
-        if (!visited.has(nextValue)) {
-          visited.add(nextValue);
-          queue.push({ value: nextValue, moves: moves + 1 });
-        }
-      }
+export const PRIME_FACTORS = [2, 3, 5, 7] as const;
+
+export function getMinimumMoves(target: number, current: number = 1): number {
+  if (!Number.isSafeInteger(target) || !Number.isSafeInteger(current) ||
+      current < 1 || target < current || target % current !== 0) return -1;
+
+  let remaining = target / current;
+  let moves = 0;
+  for (const prime of PRIME_FACTORS) {
+    while (remaining % prime === 0) {
+      remaining /= prime;
+      moves++;
     }
   }
-  
-  return -1; // Should not be reached if target is valid
+  return remaining === 1 ? moves : -1;
 }
 
-export function getBestMove(target: number): number {
-  for (let i = 9; i >= 2; i--) {
-    if (target % i === 0) {
-      const nextValue = target / i;
-      // We check if the next value can reach 1 in (minMoves - 1)
-      if (getMinimumMoves(nextValue) === getMinimumMoves(target) - 1) {
-        return i;
-      }
-    }
+export function canMultiply(target: number, current: number, factor: number): boolean {
+  return PRIME_FACTORS.some(prime => prime === factor) &&
+    getMinimumMoves(target, current) > 0 &&
+    current <= target / factor && target % (current * factor) === 0;
+}
+
+export function getBestMove(target: number, current: number = 1): number {
+  for (const prime of [...PRIME_FACTORS].reverse()) {
+    if (canMultiply(target, current, prime)) return prime;
   }
   return -1;
 }
@@ -40,12 +31,8 @@ export function getBestMove(target: number): number {
 const COMPLEXITY_MAP: Record<number, number> = {
   2: 1,
   3: 2,
-  4: 2,
   5: 2,
-  6: 3,
   7: 4,
-  8: 3,
-  9: 3
 };
 
 export function generateTarget(
@@ -55,13 +42,8 @@ export function generateTarget(
 ): { target: number; minMoves: number } {
   if (isTutorial) {
     const TUTORIAL_POOL = [
-      { target: 12, minMoves: 2 },
-      { target: 21, minMoves: 2 },
-      { target: 15, minMoves: 2 },
-      { target: 18, minMoves: 2 },
-      { target: 20, minMoves: 2 },
-      { target: 24, minMoves: 2 }
-    ];
+      12, 21, 15, 18, 20, 24
+    ].map(target => ({ target, minMoves: getMinimumMoves(target) }));
     
     const available = TUTORIAL_POOL.filter(t => !history.includes(t.target));
     if (available.length > 0) {
@@ -71,7 +53,7 @@ export function generateTarget(
   }
 
   // Linear progression: target complexity roughly increases with difficulty
-  // Adding variety in how the target is constructed allows pure easy combos (like 1024 or 125)
+  // Prime products keep every level reachable, with variety such as 1024 or 125.
   const minComplexity = difficulty + 2;
   const maxComplexity = minComplexity + 4;
   
@@ -80,7 +62,7 @@ export function generateTarget(
   let bestTarget = 1;
   let bestDiff = Infinity;
   
-  const fullPool = [2, 3, 4, 5, 6, 7, 8, 9];
+  const fullPool = [...PRIME_FACTORS];
   
   do {
       let currentTarget = 1;

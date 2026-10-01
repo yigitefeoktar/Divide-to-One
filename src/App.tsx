@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 import { ByteBrew } from 'bytebrew-web-sdk';
-import { generateTarget, getBestMove, getMinimumMoves } from './utils';
+import { generateTarget, getBestMove, getMinimumMoves, canMultiply, PRIME_FACTORS } from './utils';
 import { cn } from './lib/utils';
 import { RotateCcw, Volume2, VolumeX, Settings, X, HelpCircle } from 'lucide-react';
 import { playCorrectMove, playWrongMove, playWinLevel, playLoseGame, playClick, isMuted, setMuted, getVolume, setVolume } from './audio';
@@ -56,6 +56,7 @@ function ActionButton({
     <motion.button
       whileHover={!disabled ? { scale: 1.05 } : {}}
       whileTap={!disabled ? { scale: 0.92 } : {}}
+      aria-label={`Multiply by ${number}`}
       onClick={() => onClick(number)}
       disabled={disabled}
       className={cn(
@@ -273,6 +274,7 @@ export default function App() {
   const { scale } = useAppScale();
   const [level, setLevel] = useState(1);
   const [current, setCurrent] = useState(0);
+  const [target, setTarget] = useState(0);
   const [minMoves, setMinMoves] = useState(0);
   const [maxMistakes, setMaxMistakes] = useState(0);
   const [moves, setMoves] = useState(0);
@@ -289,7 +291,7 @@ export default function App() {
   const tutorialRef = useRef(true);
   const tutorialProgressRef = useRef(0);
   const [bestMove, setBestMove] = useState<number>(-1);
-  const [failedDivisors, setFailedDivisors] = useState<number[]>([]);
+  const [failedFactors, setFailedFactors] = useState<number[]>([]);
   const [muted, setMutedState] = useState(() => isMuted());
   const [volume, setVolumeState] = useState(() => getVolume());
 
@@ -344,24 +346,25 @@ export default function App() {
   const initGame = useCallback((diff: number, resetHistory = false) => {
     if (resetHistory) {
       if (historyRef.current.length > 0) {
-        localStorage.setItem('lastGameHistory', JSON.stringify(historyRef.current));
+        localStorage.setItem('multiplyToTargetHistory', JSON.stringify(historyRef.current));
       }
       historyRef.current = [];
     }
     const isTut = tutorialRef.current;
-    const lastGameHistory: number[] = JSON.parse(localStorage.getItem('lastGameHistory') || '[]');
+    const lastGameHistory: number[] = JSON.parse(localStorage.getItem('multiplyToTargetHistory') || '[]');
     const combinedHistory = [...lastGameHistory, ...historyRef.current];
     const { target: newTarget, minMoves: newMinMoves } = generateTarget(diff, combinedHistory, isTut);
     historyRef.current.push(newTarget);
     
     const allowedMistakes = newMinMoves === 2 ? 2 : Math.ceil(newMinMoves * 0.5);
     
-    setCurrent(newTarget);
+    setTarget(newTarget);
+    setCurrent(1);
     setMinMoves(newMinMoves);
     setMaxMistakes(allowedMistakes);
     setMoves(0);
     setMistakes(0);
-    setFailedDivisors([]);
+    setFailedFactors([]);
     setIsWon(false);
     setIsLost(false);
     setScaleKey(k => k + 1);
@@ -383,6 +386,7 @@ export default function App() {
         level: String(diff),
         target: String(newTarget),
         is_tutorial: isTut ? 'true' : 'false',
+        game_mode: 'multiply_to_target',
         test_tag: 'test'
       });
     } catch (e) {
@@ -408,6 +412,7 @@ export default function App() {
         level: String(level),
         outcome: reason === 'mistakes' ? 'lose_mistakes' : 'lose_impossible',
         duration_seconds: String(duration),
+        game_mode: 'multiply_to_target',
         test_tag: 'test'
       });
     } catch (e) {
@@ -415,14 +420,14 @@ export default function App() {
     }
   };
 
-  const handleDivide = (divisor: number) => {
-    if (isWon || isLost) return;
+  const handleMultiply = (factor: number) => {
+    if (isWon || isLost || isSettingsOpen || target === 0) return;
     
-    const isCorrect = current % divisor === 0;
+    const isCorrect = canMultiply(target, current, factor);
     let isDuplicateMistake = false;
     
     if (!isCorrect) {
-      isDuplicateMistake = failedDivisors.includes(divisor);
+      isDuplicateMistake = failedFactors.includes(factor);
     }
     
     const newMoves = isDuplicateMistake ? moves : moves + 1;
@@ -431,9 +436,9 @@ export default function App() {
     }
     
     if (isCorrect) {
-      setFailedDivisors([]);
+      setFailedFactors([]);
     } else if (!isDuplicateMistake) {
-      setFailedDivisors(prev => [...prev, divisor]);
+      setFailedFactors(prev => [...prev, factor]);
       setMistakes(prev => prev + 1);
     }
 
@@ -443,9 +448,10 @@ export default function App() {
         game_id: String(gameIdRef.current),
         level: String(level),
         current_number: String(current),
-        divisor_entered: String(divisor),
+        factor_entered: String(factor),
         is_correct: isCorrect ? 'true' : 'false',
         moves_so_far: String(newMoves),
+        game_mode: 'multiply_to_target',
         test_tag: 'test'
       });
     } catch (e) {
@@ -454,17 +460,17 @@ export default function App() {
     
     if (isCorrect) {
       // Success
-      const next = current / divisor;
+      const next = current * factor;
       if (!(tutorialRef.current && tutorialProgressRef.current === 0)) {
-        if (next === 1 && newMoves === minMoves) {
+        if (next === target && newMoves === minMoves) {
           setFloatingText({ text: "Perfect", isPerfect: true, id: Date.now() });
         } else {
-          setFloatingText({ text: `÷ ${divisor}`, isPerfect: false, id: Date.now() });
+          setFloatingText({ text: `× ${factor}`, isPerfect: false, id: Date.now() });
         }
       }
       triggerVibrate(40);
       
-      if (next === 1) {
+      if (next === target) {
         playWinLevel();
       } else {
         playCorrectMove();
@@ -474,10 +480,10 @@ export default function App() {
       setScaleKey(k => k + 1);
       
       if (tutorialRef.current) {
-        setBestMove(getBestMove(next));
+        setBestMove(getBestMove(target, next));
       }
 
-      if (next === 1) {
+      if (next === target) {
         setIsWon(true);
         triggerVibrate([50, 50, 50, 50, 150]);
         
@@ -489,6 +495,7 @@ export default function App() {
             level: String(level),
             outcome: 'win',
             duration_seconds: String(duration),
+            game_mode: 'multiply_to_target',
             test_tag: 'test'
           });
         } catch (e) {
@@ -529,7 +536,7 @@ export default function App() {
           }
         }, 300);
       } else {
-        const required = getMinimumMoves(next);
+        const required = getMinimumMoves(target, next);
         if (required === -1) {
           triggerLoss('impossible');
         }
@@ -539,12 +546,12 @@ export default function App() {
       triggerVibrate([30, 40, 30]);
       setShakeKey(k => k + 1);
       
-      const totalMistakes = mistakes + 1;
+      const totalMistakes = mistakes + (isDuplicateMistake ? 0 : 1);
       
       if (totalMistakes > maxMistakes) {
         triggerLoss('mistakes');
       } else {
-        const required = getMinimumMoves(current);
+        const required = getMinimumMoves(target, current);
         if (required === -1) {
           triggerLoss('impossible');
         } else {
@@ -565,6 +572,7 @@ export default function App() {
             game_id: String(gameIdRef.current),
             level: String(level),
             method: 'spacebar',
+            game_mode: 'multiply_to_target',
             test_tag: 'test'
           });
         } catch (err) {
@@ -580,31 +588,31 @@ export default function App() {
         }
       } else if (!isWon && !isLost) {
         const num = parseInt(e.key, 10);
-        if (num >= 2 && num <= 9) {
-          handleDivide(num);
+        if (PRIME_FACTORS.some(prime => prime === num)) {
+          handleMultiply(num);
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isLost, isWon, level, initGame, handleDivide]);
+  }, [isLost, isWon, level, initGame, handleMultiply]);
 
   // Auto-play feature for testing
   useEffect(() => {
     if (!DEBUG_AUTO_PLAY || isWon || isLost || current === 0) return;
 
     const timer = setTimeout(() => {
-      const best = getBestMove(current);
+      const best = getBestMove(target, current);
       if (best !== -1) {
-        handleDivide(best);
+        handleMultiply(best);
       }
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [current, isWon, isLost, handleDivide]);
+  }, [current, isWon, isLost, handleMultiply]);
 
   // Wait for initial generation
-  if (current === 0) return <div className="absolute inset-0 bg-slate-950" />;
+  if (target === 0) return <div className="absolute inset-0 bg-slate-950" />;
 
   const theme = getLevelColors(level, tutorialRef.current);
 
@@ -688,7 +696,7 @@ export default function App() {
               {tutorialRef.current && tutorialProgressRef.current === 0 && (
                 <div className="absolute -top-16 text-center w-full">
                   <p className={cn("font-bold uppercase tracking-wider text-sm", theme.text)}>
-                    Divide the number to reach 1
+                    Multiply primes to reach the target
                   </p>
                 </div>
               )}
@@ -703,6 +711,7 @@ export default function App() {
                   <div className={cn("absolute inset-0 rounded-2xl ring-4 ring-offset-4 ring-offset-slate-950 animate-pulse pointer-events-none", theme.ring)} />
                 )}
                 <motion.h1
+                  aria-label={`Current number ${current}`}
                   key={`scale-${scaleKey}`}
                   initial={{ scale: 1.2, color: theme.hex }}
                   animate={{ scale: 1, color: '#f8fafc' }}
@@ -748,6 +757,14 @@ export default function App() {
                   </motion.div>
                 )}
               </motion.div>
+              <div className="mt-4 flex flex-col items-center w-full px-6" aria-label={`Target ${target}`}>
+                <span className={cn("text-sm font-semibold tracking-wider uppercase", theme.label)}>Target</span>
+                <p className={cn("text-3xl font-black tracking-tight text-center", theme.value)}>
+                  {formatNumberLines(target).map((line, i) => (
+                    <span key={i} className="block whitespace-nowrap">{line}</span>
+                  ))}
+                </p>
+              </div>
               <div className="mt-8 flex flex-col items-center justify-center gap-1 h-16 w-full max-w-[280px] rounded-2xl relative transition-all duration-1000">
                 {tutorialRef.current && tutorialProgressRef.current === 1 && (
                   <>
@@ -762,7 +779,7 @@ export default function App() {
                 {(() => {
                   const mistakesLeft = maxMistakes - mistakes;
                   const hasMistakes = mistakesLeft > 0;
-                  const currentMinMoves = getMinimumMoves(current);
+                  const currentMinMoves = getMinimumMoves(target, current);
                   return (
                     <>
                       {hasMistakes ? (
@@ -784,7 +801,7 @@ export default function App() {
                       <p className="text-sm text-slate-500 font-medium transition-colors duration-1000">
                         {currentMinMoves === -1 
                             ? "Impossible" 
-                            : `Possible in ${currentMinMoves} divisions`}
+                            : `Possible in ${currentMinMoves} multiplications`}
                       </p>
                     </>
                   );
@@ -815,7 +832,7 @@ export default function App() {
                 </p>
               </div>
               
-              {/* Bottom Content: Out of Divisions UI */}
+              {/* Bottom Content: Out of Mistakes UI */}
               <div className="flex flex-col items-center w-full max-w-sm mt-auto bg-red-950/40 p-6 rounded-[2rem] border border-red-900/50 backdrop-blur-md relative z-10">
                 <div className="flex items-center justify-center gap-2 mb-2">
                   <h4 className="text-red-400 font-bold uppercase tracking-wider text-sm">
@@ -825,7 +842,7 @@ export default function App() {
                 <p className="text-red-200/80 text-sm mb-6 text-center">
                   {lossReason === 'mistakes' 
                     ? "You've used all your allowed mistakes."
-                    : "There are no valid divisions left to reach 1."}
+                    : "There are no valid prime multiplications left to reach the target."}
                 </p>
                 
                 <motion.button
@@ -839,6 +856,7 @@ export default function App() {
                         game_id: String(gameIdRef.current),
                         level: String(level),
                         method: 'button',
+                        game_mode: 'multiply_to_target',
                         test_tag: 'test'
                       });
                     } catch (err) {
@@ -868,11 +886,11 @@ export default function App() {
       {!isLost && (
         <div className="w-full mt-auto mb-8">
           <div className={cn("grid grid-cols-4 gap-4 p-4 rounded-3xl border backdrop-blur-sm transition-colors duration-1000", theme.keypadBg, theme.keypadBorder)}>
-            {[2, 3, 4, 5, 6, 7, 8, 9].map(num => (
+            {PRIME_FACTORS.map(num => (
               <ActionButton
                 key={num}
                 number={num}
-                onClick={handleDivide}
+                onClick={handleMultiply}
                 disabled={isWon || isLost}
                 isHinted={tutorialRef.current && bestMove === num}
                 theme={theme}
@@ -988,10 +1006,10 @@ export default function App() {
                     <HelpCircle size={16} className={theme.text} /> How to Play
                   </h4>
                   <ul className="text-xs text-slate-300 space-y-2 list-disc list-inside">
-                    <li>Divide the current number to reach exactly <strong className="text-white">1</strong>.</li>
-                    <li>Choose divisors from <strong className="text-white">2 to 9</strong> on the keypad.</li>
-                    <li>Do it within the allowed limit of total <strong className="text-white">divisions</strong>.</li>
-                    <li>Avoid impossible states where no divisions remain.</li>
+                    <li>Start at <strong className="text-white">1</strong> and multiply to reach the target exactly.</li>
+                    <li>Choose prime factors <strong className="text-white">2, 3, 5, or 7</strong> on the keypad or keyboard.</li>
+                    <li>A wrong factor uses a <strong className="text-white">mistake</strong> and leaves your number unchanged.</li>
+                    <li>Reach the target to advance. Exceed the mistake limit and the run ends.</li>
                   </ul>
                 </div>
 
@@ -1034,7 +1052,7 @@ export default function App() {
 
               {/* Version info / humble signature */}
               <div className="text-center mt-6 text-[10px] text-slate-600 font-mono">
-                v1.1.0 • DIVISIONS GAME
+                v1.1.0 • MULTIPLY TO TARGET
               </div>
             </motion.div>
           )}
